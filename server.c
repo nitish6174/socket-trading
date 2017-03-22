@@ -4,12 +4,13 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
+// Constants
 #define MAX_USERS 5
 #define MAX_ITEMS 10
 #define MAX_REQUESTS 100
 #define MAX_TRANSACTIONS MAX_USERS*MAX_REQUESTS
 
-
+// Structure for trade request
 typedef struct request
 {
     int id;
@@ -18,6 +19,7 @@ typedef struct request
     char type;
 } request;
 
+// Structure for transaction
 typedef struct transaction
 {
     char buyer[20];
@@ -26,7 +28,7 @@ typedef struct transaction
     int buy_request_id, sell_request_id;
 } transaction;
 
-
+// Global variables
 const char *request_delimeter = "**********";
 request user_requests[MAX_USERS][MAX_REQUESTS];
 request buy_queue[MAX_ITEMS][MAX_TRANSACTIONS];
@@ -37,6 +39,7 @@ int trade_log_count = 0, request_count = 0;
 int buy_queue_head[MAX_ITEMS]={0}, buy_queue_tail[MAX_ITEMS]={0};
 int sell_queue_head[MAX_ITEMS]={0}, sell_queue_tail[MAX_ITEMS]={0};
 
+// Function prototypes
 void write_socket( int sockfd, char *msg );
 int find_bytes_in_mem_buffer(const char *buf, int len, const char *seq);
 char **split(char *buffer);
@@ -47,6 +50,7 @@ void insert_request(request r);
 int handle_query(int newsockfd, char **msg);
 
 
+// Main function
 int main( int argc, char *argv[] )
 {
     char choice;
@@ -54,6 +58,7 @@ int main( int argc, char *argv[] )
     char buffer[65536];
     struct sockaddr_in server_addr, client_addr;
 
+    // Getting port from arguments
     if (argc!=2)
     {
         printf("Usage:\n");
@@ -70,7 +75,7 @@ int main( int argc, char *argv[] )
         server_port = atoi(argv[1]);
     }
 
-    /* Create socket */
+    // Create socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd<0)
     {
@@ -78,23 +83,21 @@ int main( int argc, char *argv[] )
         exit(1);
     }
 
-    /* Initialize socket structure */
+    // Initialize socket structure
     bzero((char *) &server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = INADDR_ANY;
     server_addr.sin_port = htons(server_port);
 
-    /* Now bind the host address using bind() call.*/
+    // Now bind the host address using bind() call
     if (bind(sockfd, (struct sockaddr *) &server_addr, sizeof(server_addr)) < 0)
     {
         printf("ERROR : Unable to bind socket\n");
         exit(1);
     }
 
-    /*
-        Now start listening for the clients, here process will
-        go in sleep mode and will wait for the incoming connection
-    */
+    // Now start listening for the clients, here process will
+    // go in sleep mode and will wait for the incoming connection
     listen(sockfd,5);
     client_addr_len = sizeof(client_addr);
 
@@ -103,7 +106,7 @@ int main( int argc, char *argv[] )
 
     while(1)
     {
-        /* Accept actual connection from the client */
+        // Accept actual connection from the client
         newsockfd = accept(sockfd, (struct sockaddr *)&client_addr, &client_addr_len);
         if (newsockfd < 0)
         {
@@ -111,7 +114,7 @@ int main( int argc, char *argv[] )
             continue;
         }
 
-        /* If connection is established then start communicating */
+        // If connection is established then start communicating
         char buff[256];
         int offset = 0;
 
@@ -129,9 +132,11 @@ int main( int argc, char *argv[] )
             if(find_bytes_in_mem_buffer(buff, 256, request_delimeter)) break;
         }
         buffer[offset] = '\0';
+        // Split buffer by newlines
         char **msg = split(buffer);
 
         // printf("Received message :\n%s\n",buffer);
+        // Handle the query usinganother function
         handle_query(newsockfd, msg);
         printf("--------------------\n");
 
@@ -142,6 +147,7 @@ int main( int argc, char *argv[] )
 }
 
 
+// Write to socket
 void write_socket( int sockfd, char *msg )
 {
     int n = write( sockfd, msg, strlen(msg) );
@@ -151,6 +157,7 @@ void write_socket( int sockfd, char *msg )
     }
 }
 
+// Find specified pattern in a buffer
 int find_bytes_in_mem_buffer(const char *buf, int len, const char *seq)
 {
     int i;
@@ -162,6 +169,7 @@ int find_bytes_in_mem_buffer(const char *buf, int len, const char *seq)
     return 0;
 }
 
+// Split buffer by newlines
 char **split(char *buffer)
 {
     int l = strlen(buffer), i, tokens=1;
@@ -185,6 +193,7 @@ char **split(char *buffer)
     return res;
 }
 
+// Check login attempt
 int login_status( char *client_id, char *client_password, int *user_num )
 {
     FILE *fp = fopen("login.txt", "r");
@@ -206,6 +215,7 @@ int login_status( char *client_id, char *client_password, int *user_num )
     return 3;
 }
 
+// Compare requests
 int r_less_than_r(request l, request r)
 {
     if(l.price < r.price)
@@ -215,6 +225,7 @@ int r_less_than_r(request l, request r)
     return 0;
 }
 
+// Swap requests
 void swap_requests(request *a, request *b)
 {
     request temp;
@@ -223,6 +234,7 @@ void swap_requests(request *a, request *b)
     *b = temp;
 }
 
+// Insert new trade request at appropriate position in queue
 void insert_request(request req)
 {
     request *arr = ( (req.type=='B')?(buy_queue[req.item_id]):(sell_queue[req.item_id]) );
@@ -250,9 +262,10 @@ void insert_request(request req)
     }
 }
 
-
+// Take appropriate action based on request type
 int handle_query(int newsockfd, char **msg)
 {
+    // LOGIN type request
     if(strcmp(msg[0], "LOGIN")==0)
     {
         printf("Query  : LOGIN attempt for client_id %s\n", msg[1]);
@@ -274,6 +287,7 @@ int handle_query(int newsockfd, char **msg)
                 break;
         }
     }
+    // BUY trade request
     else if(strcmp(msg[0], "BUY")==0)
     {
         printf("Query  : BUY request by client_id %s\n", msg[1]);
@@ -331,6 +345,7 @@ int handle_query(int newsockfd, char **msg)
         write_socket(newsockfd, "SUCCESS\n");
         printf("Status : Buy request added\n");
     }
+    // SELL trade request
     else if(strcmp(msg[0], "SELL")==0)
     {
         printf("Query  : SELL request by client_id %s\n", msg[1]);
@@ -404,6 +419,7 @@ int handle_query(int newsockfd, char **msg)
         write_socket(newsockfd, "SUCCESS\n");
         printf("Status : Sell request added\n");
     }
+    // View queue for each item
     else if(strcmp(msg[0], "VIEW_ORDERS")==0)
     {
         printf("Query  : VIEW_ORDERS request by client_id %s\n", msg[1]);
@@ -434,6 +450,7 @@ int handle_query(int newsockfd, char **msg)
         }
         printf("Status : Orders data returned\n");
     }
+    // List all requests of user and show corresponding transactions
     else if(strcmp(msg[0], "VIEW_TRADES")==0)
     {
         printf("Query  : VIEW_TRADES request by client_id %s\n", msg[1]);
